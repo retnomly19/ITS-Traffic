@@ -336,7 +336,7 @@ if uploaded_file is not None and process_button:
                                 })
                 previous_center[obj_id] = cy
         
-        # LOGIKA PER 5 DETIK (REKAP INTERVAL FIX)
+        # LOGIKA PER 2 DETIK (REKAP INTERVAL FIX)
         if frame_number % int(fps_video * interval_seconds) == 0:
             interval_log.append({
                 "Detik": int(frame_number / fps_video),
@@ -424,7 +424,9 @@ if st.session_state.processed:
 
     # Player Video Hasil di Panel Kanan
     with right:
-        preview_video.video(st.session_state.output_video_path)
+        if os.path.exists(st.session_state.output_video_path):
+        with open(st.session_state.output_video_path, "rb") as f:
+            preview_video.video(f.read())
 
     st.divider()
 
