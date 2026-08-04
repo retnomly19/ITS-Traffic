@@ -8,7 +8,6 @@ import pandas as pd
 import time
 import io
 import plotly.graph_objects as go
-import subprocess
 
 # ==========================
 # PARAMETER MODEL & CONFIG
@@ -351,18 +350,6 @@ if uploaded_file is not None and process_button:
     cap.release()
     writer.release()
 
-    preview_path = output_video_path.replace(".mp4", "_preview.mp4")
-
-    subprocess.run([
-        "ffmpeg",
-        "-y",
-        "-i", output_video_path,
-        "-vcodec", "libx264",
-        "-pix_fmt", "yuv420p",
-        preview_path
-    ])
-
-    st.session_state.preview_video_path = preview_path
     total_time = time.time() - start_time
     
     # Jika ada sisa detik terakhir yang belum tercatat di interval
@@ -437,12 +424,11 @@ if st.session_state.processed:
 
     # Player Video Hasil di Panel Kanan
     with right:
-        if (
-            "preview_video_path" in st.session_state
-            and os.path.exists(st.session_state.preview_video_path)
-        ):
-            preview_video.video(st.session_state.preview_video_path)
-
+        if os.path.exists(st.session_state.output_video_path):
+            preview_video.video(
+                st.session_state.output_video_path,
+                format="video/mp4"
+            )
     st.divider()
 
     # PENYESUAIAN LAYOUT DINAMIS (PORTRAIT VS LANDSCAPE)
