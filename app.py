@@ -84,8 +84,8 @@ st.markdown("""
 # ==========================
 if "processed" not in st.session_state:
     st.session_state.processed = False
-if "output_video_path" not in st.session_state:
-    st.session_state.output_video_path = None
+if "video_bytes" not in st.session_state:
+    st.session_state.video_bytes = None
 if "excel_bytes" not in st.session_state:
     st.session_state.excel_bytes = None
 if "traffic_log" not in st.session_state:
@@ -98,6 +98,8 @@ if "info_data" not in st.session_state:
     st.session_state.info_data = {}
 if "is_portrait" not in st.session_state:
     st.session_state.is_portrait = False
+if "last_file_name" not in st.session_state:
+    st.session_state.last_file_name = None
 
 # ==========================
 # LOAD MODEL
@@ -171,17 +173,18 @@ left, right = st.columns([1, 2])
 
 with left:
     st.subheader("⚙️ Panel Kontrol")
-    uploaded_file = st.file_uploader("Upload Video Lalu Lintas", type=["mp4", "avi", "mov", "mkv","CRDOWNLOAD"])
+    uploaded_file = st.file_uploader("Upload Video Lalu Lintas", type=["mp4", "avi", "mov", "mkv", "CRDOWNLOAD"])
     
-    # Reset total jika tombol close [X] diklik pada file uploader
-    if uploaded_file is None and st.session_state.processed:
+    # PERBAIKAN: Hanya reset jika file dihapus manual ATAU diganti dengan file lain
+    if uploaded_file is None and st.session_state.last_file_name is not None:
         st.session_state.processed = False
-        st.session_state.output_video_path = None
+        st.session_state.video_bytes = None
         st.session_state.excel_bytes = None
         st.session_state.traffic_log = []
         st.session_state.interval_log = []
         st.session_state.summary_data = {}
         st.session_state.info_data = {}
+        st.session_state.last_file_name = None
         st.rerun()
 
     line_pct = st.slider("Posisi Virtual Line (%)", 10, 90, 50, 5)
@@ -190,18 +193,13 @@ with left:
     status_box = st.empty()
     progress_bar = st.progress(0)
     progress_text = st.empty()
-    
-    st.divider()
-    excel_download_placeholder = st.empty()
-    video_download_placeholder = st.empty()
 
 with right:
     st.subheader("📺 Monitoring & Visualisasi")
     preview_video = st.empty()
     
-    # TAMPILAN PREVIEW SEBELUM PROSES (OVERLAY VIRTUAL LINE SAMAR)
+    # TAMPILAN PREVIEW SEBELUM PROSES
     if uploaded_file is not None and not st.session_state.processed:
-        # Gunakan tempfile biasa agar tidak mengunci handle
         temp_dir_prev = tempfile.mkdtemp()
         temp_preview_path = os.path.join(temp_dir_prev, "preview_temp.mp4")
         
@@ -215,7 +213,6 @@ with right:
             h_prev, w_prev, _ = frame_prev.shape
             line_y_prev = int(h_prev * line_pct / 100)
             
-            # Buat overlay samar (dimmed/opacity)
             dimmed_frame = cv2.addWeighted(frame_prev, 0.45, np.zeros_like(frame_prev), 0.55, 0)
             cv2.line(dimmed_frame, (0, line_y_prev), (w_prev, line_y_prev), (0, 0, 255), 3)
             cv2.putText(dimmed_frame, f"Garis Virtual ({line_pct}%)", (20, line_y_prev - 10),
@@ -228,13 +225,11 @@ with right:
             )
             
         cap_prev.release()
-        
-        # Hapus file dan folder temporary dengan aman (mengabaikan error penguncian OS)
         try:
             os.remove(temp_preview_path)
             os.rmdir(temp_dir_prev)
         except Exception:
-            pass  # Biarkan OS/Streamlit membersihkan sisa temp file saat restart
+            pass
             
     elif not st.session_state.processed:
         preview_video.info("Silakan upload video lalu atur posisi garis virtual.")
@@ -243,11 +238,12 @@ with right:
 # PROSES PENGOLAHAN VIDEO
 # ==========================
 if uploaded_file is not None and process_button:
+    st.session_state.last_file_name = uploaded_file.name
     status_box.warning("Mempersiapkan pemrosesan video...")
     
     temp_dir = tempfile.mkdtemp()
     input_video_path = os.path.join(temp_dir, "input.mp4")
-    output_video_path = os.path.join(temp_dir, "hasil_deteksi.mp4")
+    output_video_path = os.path.join(temp_dir, "hasil_deteksi.webm")
     
     with open(input_video_path, "wb") as f:
         f.write(uploaded_file.read())
@@ -259,10 +255,8 @@ if uploaded_file is not None and process_button:
     if fps_video <= 0: fps_video = 25
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     
-    # Deteksi orientasi video
     st.session_state.is_portrait = height > width
     
-    output_video_path = os.path.join(temp_dir, "hasil_deteksi.webm")
     fourcc = cv2.VideoWriter_fourcc(*"VP80")
     writer = cv2.VideoWriter(output_video_path, fourcc, fps_video, (width, height))
     
@@ -337,13 +331,12 @@ if uploaded_file is not None and process_button:
                                 })
                 previous_center[obj_id] = cy
         
-        # LOGIKA PER 2 DETIK (REKAP INTERVAL FIX)
         if frame_number % int(fps_video * interval_seconds) == 0:
             interval_log.append({
                 "Detik": int(frame_number / fps_video),
                 "Kendaraan Melintas": interval_count
             })
-            interval_count = 0  # Reset counter interval saja
+            interval_count = 0
             
         update_metrics(sum(counts.values()), counts["car"], counts["motorcycle"], counts["bus"], counts["truck"], fps_process)
         writer.write(frame)
@@ -353,14 +346,13 @@ if uploaded_file is not None and process_button:
 
     total_time = time.time() - start_time
     
-    # Jika ada sisa detik terakhir yang belum tercatat di interval
     if frame_number % int(fps_video * interval_seconds) != 0:
         interval_log.append({
             "Detik": int(frame_number / fps_video),
             "Kendaraan Melintas": interval_count
         })
 
-    # GENERATE REPORT EXCEL DENGAN MULTI-SHEET
+    # GENERATE REPORT EXCEL
     df_log = pd.DataFrame(traffic_log) if traffic_log else pd.DataFrame([{"No": "-", "Detik": "-", "Waktu": "-", "ID": "-", "Kategori": "NIHIL"}])
     df_interval = pd.DataFrame(interval_log) if interval_log else pd.DataFrame([{"Detik": 0, "Kendaraan Melintas": 0}])
     df_summary = pd.DataFrame({
@@ -379,9 +371,13 @@ if uploaded_file is not None and process_button:
         df_summary.to_excel(writer_excel, sheet_name="Ringkasan Total", index=False)
         info_df.to_excel(writer_excel, sheet_name="Parameter Informasi", index=False)
         
-    # SIMPAN HASIL KEDALAM SESSION STATE
+    # BACA VIDEO KE DALAM MEMORI BYTES
+    with open(output_video_path, "rb") as vf:
+        out_v_bytes = vf.read()
+
+    # SIMPAN KE SESSION STATE
     st.session_state.processed = True
-    st.session_state.output_video_path = output_video_path
+    st.session_state.video_bytes = out_v_bytes
     st.session_state.excel_bytes = excel_buffer.getvalue()
     st.session_state.traffic_log = traffic_log
     st.session_state.interval_log = interval_log
@@ -398,39 +394,48 @@ if uploaded_file is not None and process_button:
         "line": f"{line_pct}%"
     }
     
+    try:
+        os.remove(input_video_path)
+        os.remove(output_video_path)
+        os.rmdir(temp_dir)
+    except Exception:
+        pass
+
     status_box.success("Analisis Video Selesai!")
 
 # ==========================
 # MENAMPILKAN HASIL ANALISIS
 # ==========================
 if st.session_state.processed:
-    # Tombol Download di Panel Kiri (Aman dari Refresh Reset)
+    # Tombol Download di Panel Kiri
     with left:
-        excel_download_placeholder.download_button(
-            label="📊 Download Laporan CSV/Excel",
+        st.divider()
+        st.download_button(
+            label="📊 Download Laporan Excel",
             data=st.session_state.excel_bytes,
             file_name=f"Laporan_Traffic_{time.strftime('%Y%m%d_%H%M%S')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
+            use_container_width=True,
+            key="btn_download_excel"
         )
-        with open(st.session_state.output_video_path, "rb") as f:
-            v_bytes = f.read()
-        video_download_placeholder.download_button(
+        st.download_button(
             label="🎥 Download Video Hasil",
-            data=v_bytes,
+            data=st.session_state.video_bytes,
             file_name="Hasil_Deteksi.webm",
             mime="video/webm",
-            use_container_width=True
+            use_container_width=True,
+            key="btn_download_video"
         )
 
     # Player Video Hasil di Panel Kanan
     with right:
-        if st.session_state.output_video_path and os.path.exists(st.session_state.output_video_path):
-            preview_video.empty() 
-            st.video(             
-                st.session_state.output_video_path,
+        if st.session_state.video_bytes is not None:
+            preview_video.empty()
+            st.video(
+                st.session_state.video_bytes,
                 format="video/webm"
             )
+
     st.divider()
 
     # PENYESUAIAN LAYOUT DINAMIS (PORTRAIT VS LANDSCAPE)
@@ -439,7 +444,6 @@ if st.session_state.processed:
     info = st.session_state.info_data
 
     if st.session_state.is_portrait:
-        # Video Portrait: Parameter di Kiri, Grafik di Kanan
         col_param, col_chart = st.columns([1, 2])
         with col_param:
             st.markdown("### 📋 Parameter Analisis")
@@ -447,7 +451,6 @@ if st.session_state.processed:
         with col_chart:
             st.plotly_chart(fig_chart, use_container_width=True)
     else:
-        # Video Landscape: Parameter & Ringkasan di Atas, Grafik Lebar di Bawah
         col_p1, col_p2 = st.columns([1, 1])
         with col_p1:
             st.markdown("### 📌 Summary Parameter")
