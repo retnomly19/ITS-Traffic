@@ -262,7 +262,8 @@ if uploaded_file is not None and process_button:
     # Deteksi orientasi video
     st.session_state.is_portrait = height > width
     
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    output_video_path = os.path.join(temp_dir, "hasil_deteksi.webm")
+    fourcc = cv2.VideoWriter_fourcc(*"VP80")
     writer = cv2.VideoWriter(output_video_path, fourcc, fps_video, (width, height))
     
     line_y = int(height * line_pct / 100)
@@ -417,18 +418,19 @@ if st.session_state.processed:
         video_download_placeholder.download_button(
             label="🎥 Download Video Hasil",
             data=v_bytes,
-            file_name="Hasil_Deteksi.mp4",
-            mime="video/mp4",
+            file_name="Hasil_Deteksi.webm",
+            mime="video/webm",
             use_container_width=True
         )
 
     # Player Video Hasil di Panel Kanan
     with right:
-        if os.path.exists(st.session_state.output_video_path):
-            preview_video.video(
-                st.session_state.output_video_path,
-                format="video/mp4"
-            )
+        if st.session_state.output_video_path and os.path.exists(st.session_state.output_video_path):
+            preview_video.empty() 
+                st.video(             
+                    st.session_state.output_video_path,
+                    format="video/webm"
+                )
     st.divider()
 
     # PENYESUAIAN LAYOUT DINAMIS (PORTRAIT VS LANDSCAPE)
