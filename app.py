@@ -427,10 +427,10 @@ if st.session_state.processed:
     with right:
         if st.session_state.output_video_path and os.path.exists(st.session_state.output_video_path):
             preview_video.empty() 
-                st.video(             
-                    st.session_state.output_video_path,
-                    format="video/webm"
-                )
+            st.video(             
+                st.session_state.output_video_path,
+                format="video/webm"
+            )
     st.divider()
 
     # PENYESUAIAN LAYOUT DINAMIS (PORTRAIT VS LANDSCAPE)
