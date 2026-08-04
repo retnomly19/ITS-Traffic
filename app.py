@@ -424,9 +424,15 @@ if st.session_state.processed:
 
     # Player Video Hasil di Panel Kanan
     with right:
+        st.write("PATH:", st.session_state.output_video_path)
+        st.write("ADA:", os.path.exists(st.session_state.output_video_path))
+
         if os.path.exists(st.session_state.output_video_path):
             with open(st.session_state.output_video_path, "rb") as f:
-                preview_video.video(f.read())
+                video_bytes = f.read()
+
+            st.write("SIZE:", len(video_bytes))
+            preview_video.video(video_bytes)
 
     st.divider()
 
