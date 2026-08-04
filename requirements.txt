@@ -1,7 +1,8 @@
 streamlit
-ultralytics
+ultralytics==8.4.104
 opencv-python-headless
 numpy
 pandas
 openpyxl
 plotly
+lap
