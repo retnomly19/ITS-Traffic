@@ -262,7 +262,7 @@ if uploaded_file is not None and process_button:
     # Deteksi orientasi video
     st.session_state.is_portrait = height > width
     
-    fourcc = cv2.VideoWriter_fourcc(*"avc1")
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     writer = cv2.VideoWriter(output_video_path, fourcc, fps_video, (width, height))
     
     line_y = int(height * line_pct / 100)
